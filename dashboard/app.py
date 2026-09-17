@@ -1,67 +1,39 @@
 """
 AI-Based Real-Time Stress and Affect Detection Using Federated Learning and Explainable AI
-Flask Backend Web Application for Real-Time WESAD Simulation Dashboard
+Vercel-Compatible Flask Backend Web Application
+Reads precomputed predictions and results using Python standard library (os, json, csv) + Flask.
 """
 
 import os
-import sys
 import json
-import joblib
-import numpy as np
-import pandas as pd
+import csv
 from flask import Flask, render_template, jsonify, send_from_directory, request
 
-import torch
-
-# Add root directory to python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from src.model import StressClassifier
-from src.train import LABEL_TO_CLASS
-
-CLASS_NAMES = ['Neutral', 'Stress', 'Amusement']
-CLASS_MAP_REV = {0: 'Neutral', 1: 'Stress', 2: 'Amusement'}
+# Define base directory relative to this app.py file
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Initialize Flask App
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
-# Global Cache Variables for Model & Scaler
-GLOBAL_MODEL = None
-GLOBAL_SCALER = None
-FEATURE_COLS = None
-TEST_DF = None
-WESAD_CSV_PATH = os.path.join("data", "processed", "wesad_features.csv")
+# Data Cache
+PREDICTIONS_CACHE = None
 
 
-def load_backend_resources():
+def load_precomputed_predictions():
     """
-    Loads PyTorch Federated Global Model, Scaler, and WESAD Test Features Dataset.
+    Loads precomputed predictions from results/dashboard_predictions.json into memory.
     """
-    global GLOBAL_MODEL, GLOBAL_SCALER, FEATURE_COLS, TEST_DF
-    
-    if os.path.exists(WESAD_CSV_PATH):
-        df = pd.read_csv(WESAD_CSV_PATH)
-        metadata_cols = ['subject_id', 'label', 'label_name', 'window_id']
-        FEATURE_COLS = [c for c in df.columns if c not in metadata_cols]
-        # Filter for unseen test subjects S16 and S17
-        TEST_DF = df[df['subject_id'].isin(['S16', 'S17'])].copy().reset_index(drop=True)
+    global PREDICTIONS_CACHE
+    json_path = os.path.join(BASE_DIR, "results", "dashboard_predictions.json")
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
+            PREDICTIONS_CACHE = json.load(f)
     else:
-        print(f"Warning: {WESAD_CSV_PATH} not found.")
-
-    scaler_path = os.path.join("models", "federated_scaler.pkl")
-    if os.path.exists(scaler_path):
-        GLOBAL_SCALER = joblib.load(scaler_path)
-
-    model_path = os.path.join("models", "federated_global_model.pth")
-    if os.path.exists(model_path) and FEATURE_COLS:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        GLOBAL_MODEL = StressClassifier(input_dim=len(FEATURE_COLS), num_classes=3).to(device)
-        GLOBAL_MODEL.load_state_dict(torch.load(model_path, map_location=device))
-        GLOBAL_MODEL.eval()
+        PREDICTIONS_CACHE = None
 
 
-# Initialize resources at startup
-load_backend_resources()
+# Load precomputed predictions on startup
+load_precomputed_predictions()
 
 
 # --- ROUTES ---
@@ -75,7 +47,7 @@ def index():
 @app.route("/results/plots/<filename>")
 def serve_plot(filename):
     """Serves generated evaluation & FL plot images."""
-    plots_dir = os.path.abspath(os.path.join("results", "plots"))
+    plots_dir = os.path.join(BASE_DIR, "results", "plots")
     return send_from_directory(plots_dir, filename)
 
 
@@ -103,6 +75,7 @@ def get_summary():
             "client_2": "S7, S8, S9, S10, S11 (2,211 samples)",
             "client_3": "S13, S14, S15 (1,331 samples)",
             "unseen_test_subjects": "S16, S17 (895 samples)",
+            "total_test_windows": 895,
             "aggregation": "FedAvg (5 Rounds)",
             "raw_data_shared": False
         }
@@ -112,106 +85,76 @@ def get_summary():
 @app.route("/api/simulation/windows")
 def get_simulation_windows():
     """Returns list of available simulation windows from unseen test subjects S16 and S17."""
-    if TEST_DF is None:
-        return jsonify({"error": "Dataset not loaded"}), 500
-        
-    windows_list = []
-    for idx, row in TEST_DF.iterrows():
-        windows_list.append({
-            "index": idx,
-            "window_id": str(row['window_id']),
-            "subject_id": str(row['subject_id']),
-            "label_name": str(row['label_name'])
-        })
-    return jsonify({"total_test_windows": len(windows_list), "windows": windows_list})
+    global PREDICTIONS_CACHE
+    if PREDICTIONS_CACHE is None:
+        load_precomputed_predictions()
+
+    if PREDICTIONS_CACHE is None or "predictions" not in PREDICTIONS_CACHE:
+        return jsonify({"error": "Precomputed predictions file results/dashboard_predictions.json not found"}), 500
+
+    predictions = PREDICTIONS_CACHE["predictions"]
+    windows_list = [
+        {
+            "index": p["window_index"],
+            "window_id": p["window_id"],
+            "subject_id": p["subject_id"],
+            "label_name": p["true_label"]
+        }
+        for p in predictions
+    ]
+    return jsonify({
+        "total_test_windows": len(windows_list),
+        "windows": windows_list
+    })
 
 
 @app.route("/api/simulation/predict/<int:window_idx>")
 def predict_window(window_idx):
     """
-    Performs real-time model inference on a specific WESAD test window sample.
-    Uses actual PyTorch global model and scaler without fabricating data.
+    Returns precomputed PyTorch FedAvg model inference for a specific WESAD test window sample.
+    Reads from results/dashboard_predictions.json without requiring PyTorch/heavy dependencies.
     """
-    if TEST_DF is None or GLOBAL_MODEL is None or GLOBAL_SCALER is None:
-        return jsonify({"error": "Backend models or dataset not initialized"}), 500
-        
-    if window_idx < 0 or window_idx >= len(TEST_DF):
+    global PREDICTIONS_CACHE
+    if PREDICTIONS_CACHE is None:
+        load_precomputed_predictions()
+
+    if PREDICTIONS_CACHE is None or "predictions" not in PREDICTIONS_CACHE:
+        return jsonify({"error": "Precomputed predictions file results/dashboard_predictions.json not found"}), 500
+
+    predictions = PREDICTIONS_CACHE["predictions"]
+    if window_idx < 0 or window_idx >= len(predictions):
         window_idx = 0
-        
-    row = TEST_DF.iloc[window_idx]
-    
-    # Extract raw 68 features for window
-    x_raw = row[FEATURE_COLS].values.reshape(1, -1)
-    
-    # Scale using federated scaler
-    x_scaled = GLOBAL_SCALER.transform(x_raw)
-    
-    # PyTorch Inference
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    x_tensor = torch.tensor(x_scaled, dtype=torch.float32).to(device)
-    
-    with torch.no_grad():
-        logits = GLOBAL_MODEL(x_tensor)
-        probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-        pred_class_idx = int(np.argmax(probs))
-        
-    pred_label_name = CLASS_MAP_REV[pred_class_idx]
-    pred_confidence = float(probs[pred_class_idx])
-    
-    true_label_name = str(row['label_name'])
-    
-    # Extract actual sensor metrics for display
-    sensor_display = {
-        "wrist_temp_mean": round(float(row.get('w_temp_mean', 0.0)), 2),
-        "wrist_temp_min": round(float(row.get('w_temp_min', 0.0)), 2),
-        "wrist_temp_max": round(float(row.get('w_temp_max', 0.0)), 2),
-        "wrist_hr_mean": round(float(row.get('w_hr_mean', 0.0)), 1),
-        "wrist_hr_min": round(float(row.get('w_hr_min', 0.0)), 1),
-        "wrist_hr_max": round(float(row.get('w_hr_max', 0.0)), 1),
-        "wrist_eda_mean": round(float(row.get('w_eda_mean', 0.0)), 4),
-        "chest_ecg_mean": round(float(row.get('c_ecg_mean', 0.0)), 4),
-        "chest_ecg_std": round(float(row.get('c_ecg_std', 0.0)), 4),
-        "chest_eda_mean": round(float(row.get('c_eda_mean', 0.0)), 4),
-        "chest_resp_mean": round(float(row.get('c_resp_mean', 0.0)), 3),
-        "chest_acc_mag_mean": round(float(row.get('c_acc_mag_mean', 0.0)), 3),
-        "wrist_acc_mag_mean": round(float(row.get('w_acc_mag_mean', 0.0)), 3)
-    }
-    
-    return jsonify({
-        "window_index": window_idx,
-        "window_id": str(row['window_id']),
-        "subject_id": str(row['subject_id']),
-        "true_label": true_label_name,
-        "predicted_label": pred_label_name,
-        "prediction_confidence": round(pred_confidence * 100, 2),
-        "class_probabilities": {
-            "Neutral": round(float(probs[0]) * 100, 2),
-            "Stress": round(float(probs[1]) * 100, 2),
-            "Amusement": round(float(probs[2]) * 100, 2)
-        },
-        "sensor_values": sensor_display
-    })
+
+    return jsonify(predictions[window_idx])
 
 
 @app.route("/api/xai/importance")
 def get_xai_importance():
     """Returns top SHAP feature importance rankings from results/xai/shap_feature_importance.csv."""
-    csv_path = os.path.join("results", "xai", "shap_feature_importance.csv")
+    csv_path = os.path.join(BASE_DIR, "results", "xai", "shap_feature_importance.csv")
     if not os.path.exists(csv_path):
         return jsonify({"error": "SHAP feature importance CSV not found"}), 404
-        
-    df_imp = pd.read_csv(csv_path)
-    return jsonify(df_imp.head(15).to_dict(orient="records"))
+
+    features_list = []
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            features_list.append({
+                "feature": row["feature"],
+                "mean_abs_shap": float(row["mean_abs_shap"])
+            })
+
+    return jsonify(features_list[:15])
 
 
 @app.route("/api/xai/sample_explanation")
 def get_xai_sample_explanation():
     """Returns contents of results/xai/sample_explanation.json."""
-    json_path = os.path.join("results", "xai", "sample_explanation.json")
+    json_path = os.path.join(BASE_DIR, "results", "xai", "sample_explanation.json")
     if not os.path.exists(json_path):
         return jsonify({"error": "Sample explanation JSON not found"}), 404
-        
-    with open(json_path, 'r') as f:
+
+    with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     return jsonify(data)
 
@@ -219,54 +162,49 @@ def get_xai_sample_explanation():
 @app.route("/api/performance/comparison")
 def get_performance_comparison():
     """Returns actual computed evaluation metrics comparing Centralized Baseline vs Federated Learning."""
-    # Load Federated Learning Metrics
-    fl_json_path = os.path.join("results", "federated_metrics.json")
-    fl_metrics = {}
-    if os.path.exists(fl_json_path):
-        with open(fl_json_path, 'r') as f:
-            fl_metrics = json.load(f)
+    fl_json_path = os.path.join(BASE_DIR, "results", "federated_metrics.json")
+    cent_json_path = os.path.join(BASE_DIR, "results", "centralized_metrics.json")
 
-    # Load Centralized Baseline Metrics from saved results file or compute from src/evaluation.py
-    cent_json_path = os.path.join("results", "centralized_metrics.json")
-    cent_metrics = {}
-    if os.path.exists(cent_json_path):
-        with open(cent_json_path, 'r') as f:
-            cent_metrics = json.load(f)
-    else:
-        # Fallback to evaluating actual trained centralized model from existing src/evaluation.py module
-        try:
-            from src.evaluation import evaluate_centralized_model
-            raw_eval = evaluate_centralized_model(WESAD_CSV_PATH)
-            cent_metrics = {
-                "accuracy": raw_eval['acc'],
-                "precision_macro": raw_eval['prec_macro'],
-                "recall_macro": raw_eval['rec_macro'],
-                "f1_macro": raw_eval['f1_macro'],
-                "f1_weighted": raw_eval['f1_weighted']
-            }
-        except Exception as e:
-            print(f"Error reading centralized metrics: {e}")
+    if not os.path.exists(fl_json_path):
+        return jsonify({"error": "Federated metrics file results/federated_metrics.json not found"}), 404
 
-    cent_acc = cent_metrics.get("accuracy", 0.4737430167597765)
-    fl_acc = fl_metrics.get("accuracy", 0.5810055865921788)
+    if not os.path.exists(cent_json_path):
+        return jsonify({"error": "Centralized metrics file results/centralized_metrics.json not found"}), 404
+
+    with open(fl_json_path, 'r', encoding='utf-8') as f:
+        fl_metrics = json.load(f)
+
+    with open(cent_json_path, 'r', encoding='utf-8') as f:
+        cent_metrics = json.load(f)
+
+    cent_acc = cent_metrics.get("accuracy")
+    fl_acc = fl_metrics.get("accuracy")
+
+    def format_val(val, is_pct=False):
+        if isinstance(val, (int, float)):
+            if is_pct and val <= 1.0:
+                return f"{val * 100:.2f}%"
+            elif is_pct:
+                return f"{val:.2f}%"
+            return f"{val:.4f}"
+        return str(val)
 
     return jsonify({
         "centralized": {
-            "accuracy": f"{cent_acc * 100:.2f}%" if isinstance(cent_acc, float) and cent_acc <= 1.0 else str(cent_acc),
-            "precision_macro": f"{cent_metrics.get('precision_macro', 0.4541):.4f}" if isinstance(cent_metrics.get('precision_macro'), (int, float)) else str(cent_metrics.get('precision_macro')),
-            "recall_macro": f"{cent_metrics.get('recall_macro', 0.4008):.4f}" if isinstance(cent_metrics.get('recall_macro'), (int, float)) else str(cent_metrics.get('recall_macro')),
-            "f1_macro": f"{cent_metrics.get('f1_macro', 0.3958):.4f}" if isinstance(cent_metrics.get('f1_macro'), (int, float)) else str(cent_metrics.get('f1_macro')),
-            "f1_weighted": f"{cent_metrics.get('f1_weighted', 0.5019):.4f}" if isinstance(cent_metrics.get('f1_weighted'), (int, float)) else str(cent_metrics.get('f1_weighted'))
+            "accuracy": format_val(cent_acc, is_pct=True),
+            "precision_macro": format_val(cent_metrics.get("precision_macro")),
+            "recall_macro": format_val(cent_metrics.get("recall_macro")),
+            "f1_macro": format_val(cent_metrics.get("f1_macro")),
+            "f1_weighted": format_val(cent_metrics.get("f1_weighted"))
         },
         "federated": {
-            "accuracy": f"{fl_acc * 100:.2f}%" if isinstance(fl_acc, float) and fl_acc <= 1.0 else str(fl_acc),
-            "precision_macro": f"{fl_metrics.get('precision_macro', 0.6154):.4f}" if isinstance(fl_metrics.get('precision_macro'), (int, float)) else str(fl_metrics.get('precision_macro')),
-            "recall_macro": f"{fl_metrics.get('recall_macro', 0.6067):.4f}" if isinstance(fl_metrics.get('recall_macro'), (int, float)) else str(fl_metrics.get('recall_macro')),
-            "f1_macro": f"{fl_metrics.get('f1_macro', 0.5638):.4f}" if isinstance(fl_metrics.get('f1_macro'), (int, float)) else str(fl_metrics.get('f1_macro')),
-            "f1_weighted": f"{fl_metrics.get('f1_weighted', 0.6105):.4f}" if isinstance(fl_metrics.get('f1_weighted'), (int, float)) else str(fl_metrics.get('f1_weighted'))
+            "accuracy": format_val(fl_acc, is_pct=True),
+            "precision_macro": format_val(fl_metrics.get("precision_macro")),
+            "recall_macro": format_val(fl_metrics.get("recall_macro")),
+            "f1_macro": format_val(fl_metrics.get("f1_macro")),
+            "f1_weighted": format_val(fl_metrics.get("f1_weighted"))
         }
     })
-
 
 
 if __name__ == "__main__":
