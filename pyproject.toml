@@ -2,7 +2,22 @@
 name = "stress-affect-federated-ai"
 version = "0.1.0"
 description = "AI-based stress and affect detection using Federated Learning and Explainable AI"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "torch",
+    "torchvision",
+    "flwr",
+    "shap",
+    "flask",
+    "plotly",
+    "matplotlib",
+    "seaborn",
+    "joblib"
+]
 
 [tool.vercel]
 entrypoint = "dashboard.app:app"
