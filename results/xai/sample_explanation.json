@@ -1,0 +1,60 @@
+{
+    "subject_id": "S16",
+    "true_label": "Neutral",
+    "predicted_label": "Amusement",
+    "prediction_confidence": 0.9181,
+    "top_positive_features": [
+        {
+            "feature": "w_temp_min",
+            "feature_value": 30.45,
+            "shap_value": 0.0906315159506073
+        },
+        {
+            "feature": "w_temp_max",
+            "feature_value": 30.47,
+            "shap_value": 0.08980693601138533
+        },
+        {
+            "feature": "w_acc_z_min",
+            "feature_value": 44.0,
+            "shap_value": 0.062332646385815066
+        },
+        {
+            "feature": "w_temp_mean",
+            "feature_value": 30.466,
+            "shap_value": 0.05979139051860045
+        },
+        {
+            "feature": "w_acc_z_mean",
+            "feature_value": 44.91875,
+            "shap_value": 0.03351460575537167
+        }
+    ],
+    "top_negative_features": [
+        {
+            "feature": "c_eda_max",
+            "feature_value": 1.0669708251953125,
+            "shap_value": -0.013265595031354752
+        },
+        {
+            "feature": "c_acc_z_mean",
+            "feature_value": -0.1957038289138249,
+            "shap_value": -0.004331654409594802
+        },
+        {
+            "feature": "c_resp_min",
+            "feature_value": -2.79083251953125,
+            "shap_value": -0.0029960068760923656
+        },
+        {
+            "feature": "c_resp_mean",
+            "feature_value": -0.4353960309709821,
+            "shap_value": -0.0027494489214473
+        },
+        {
+            "feature": "c_acc_z_min",
+            "feature_value": -0.2577999830245971,
+            "shap_value": -0.002280740354567374
+        }
+    ]
+}

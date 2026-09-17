@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Based Real-Time Stress & Affect Detection (FL & XAI)</title>
+    <!-- Google Fonts & Chart.js -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <!-- Header Navbar -->
+    <header class="navbar">
+        <div class="nav-brand">
+            <div class="logo-icon">⚡</div>
+            <div>
+                <h1>AI-Based Stress & Affect Detection</h1>
+                <p class="subtitle">Federated Learning & Explainable AI using WESAD Wearable Dataset</p>
+            </div>
+        </div>
+        <div class="nav-status">
+            <span class="status-badge dataset-badge">Dataset: WESAD (15 Subjects)</span>
+            <span class="status-badge simulation-badge">
+                <span class="pulse-dot"></span> REAL-TIME WESAD SIMULATION
+            </span>
+            <span class="status-badge disclaimer-badge">Simulation Mode — No Physical Wearable Connected</span>
+        </div>
+    </header>
+
+    <div class="main-container">
+
+        <!-- Left Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">NAVIGATION</span>
+            </div>
+            <nav class="nav-menu">
+                <button type="button" class="nav-item active" data-target="dashboard">
+                    <span class="nav-icon">🖥️</span> Dashboard Overview
+                </button>
+                <button type="button" class="nav-item" data-target="sensors">
+                    <span class="nav-icon">🩺</span> Sensor Live Features
+                </button>
+                <button type="button" class="nav-item" data-target="xai">
+                    <span class="nav-icon">🧠</span> Explainable AI (SHAP)
+                </button>
+                <button type="button" class="nav-item" data-target="federated">
+                    <span class="nav-icon">🌐</span> Federated Topology
+                </button>
+                <button type="button" class="nav-item" data-target="performance">
+                    <span class="nav-icon">📈</span> Model Performance
+                </button>
+                <button type="button" class="nav-item" data-target="dataset">
+                    <span class="nav-icon">📁</span> Dataset Specs
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="content">
+
+            <!-- SECTION 1: HERO DASHBOARD & REAL-TIME PREDICTION -->
+            <section id="dashboard" class="section-card highlight-card">
+                <div class="card-header">
+                    <div>
+                        <h2>Real-Time Prediction & Live Inference</h2>
+                        <p class="section-desc">Replaying synchronized 5-second WESAD test windows (Subjects S16, S17) through FedAvg Global Model</p>
+                    </div>
+                    <div class="controls-group">
+                        <button id="btn-toggle-sim" class="btn btn-primary">▶ Start Simulation Replay</button>
+                        <button id="btn-next-step" class="btn btn-secondary">⏭ Next Window</button>
+                        <span id="sim-status-label" class="status-indicator">Paused</span>
+                    </div>
+                </div>
+
+                <!-- Hero Row: Live Affect State & Decision Probabilities -->
+                <div class="grid-2 mt-20">
+                    <!-- Live Affect State Box -->
+                    <div class="prediction-hero-box">
+                        <div class="hero-top-row">
+                            <span class="hero-label">CURRENT PREDICTED AFFECT STATE</span>
+                            <span id="hero-badge" class="badge badge-stress">STRESS</span>
+                        </div>
+                        <div class="hero-main-display">
+                            <div class="hero-class-name" id="sim-pred-label">Stress</div>
+                            <div class="hero-confidence-wrap">
+                                <span class="hero-conf-num" id="sim-confidence-val">0.0%</span>
+                                <span class="hero-conf-sub">Model Confidence</span>
+                            </div>
+                        </div>
+
+                        <div class="hero-meta-grid mt-15">
+                            <div class="meta-item">
+                                <span class="meta-key">Subject ID</span>
+                                <span class="meta-val" id="sim-subject-id">--</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-key">Window ID</span>
+                                <span class="meta-val" id="sim-window-id">--</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-key">True Ground Truth</span>
+                                <span class="meta-val" id="sim-true-label">--</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-key">Window Size</span>
+                                <span class="meta-val">5.0 Seconds</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-key">Model</span>
+                                <span class="meta-val">Federated PyTorch MLP (FedAvg)</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-key">Timestamp</span>
+                                <span class="meta-val" id="sim-timestamp">13:20:00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Class Probability Distribution Chart -->
+                    <div class="chart-card">
+                        <h3>Model Output Decision Probabilities</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="confidenceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Sensor Readouts Row (4 Compact Cards) -->
+                <h3 class="mt-25 section-subtitle">Live Physiological Sensor Features (Current WESAD Window)</h3>
+                <div class="grid-4 mt-10">
+                    <div class="sensor-compact-card">
+                        <div class="sensor-header">
+                            <span class="sensor-icon">❤️</span>
+                            <span class="sensor-title">Heart Rate</span>
+                        </div>
+                        <div class="sensor-val" id="sns-w-hr">-- BPM</div>
+                        <div class="sensor-sub" id="sns-w-hr-range">Min: -- | Max: --</div>
+                    </div>
+
+                    <div class="sensor-compact-card">
+                        <div class="sensor-header">
+                            <span class="sensor-icon">💧</span>
+                            <span class="sensor-title">Wrist EDA</span>
+                        </div>
+                        <div class="sensor-val" id="sns-w-eda">-- μS</div>
+                        <div class="sensor-sub">Electrodermal Activity</div>
+                    </div>
+
+                    <div class="sensor-compact-card">
+                        <div class="sensor-header">
+                            <span class="sensor-icon">🌡️</span>
+                            <span class="sensor-title">Wrist Temp</span>
+                        </div>
+                        <div class="sensor-val" id="sns-w-temp">-- °C</div>
+                        <div class="sensor-sub" id="sns-w-temp-range">Min: --°C | Max: --°C</div>
+                    </div>
+
+                    <div class="sensor-compact-card">
+                        <div class="sensor-header">
+                            <span class="sensor-icon">🏃</span>
+                            <span class="sensor-title">Acceleration</span>
+                        </div>
+                        <div class="sensor-val" id="sns-acc-mag">-- g</div>
+                        <div class="sensor-sub">Chest & Wrist Magnitude</div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 2: PHYSIOLOGICAL SENSORS FULL READOUT -->
+            <section id="sensors" class="section-card mt-25">
+                <div class="card-header">
+                    <h2>Complete Physiological Sensor Feature Panel</h2>
+                    <span class="badge badge-secondary">Actual WESAD Window Features</span>
+                </div>
+                <div class="grid-3 mt-20">
+                    <div class="sensor-box">
+                        <div class="sensor-title">🫀 Chest ECG Signal</div>
+                        <div class="sensor-main-val" id="sns-c-ecg">-- mV</div>
+                        <div class="sensor-sub-val" id="sns-c-ecg-std">Std Dev: --</div>
+                    </div>
+                    <div class="sensor-box">
+                        <div class="sensor-title">⚡ Chest Electrodermal Activity (EDA)</div>
+                        <div class="sensor-main-val" id="sns-c-eda">-- μS</div>
+                        <div class="sensor-sub-val">Chest EDA Mean</div>
+                    </div>
+                    <div class="sensor-box">
+                        <div class="sensor-title">🫁 Respiration Signal</div>
+                        <div class="sensor-main-val" id="sns-c-resp">--</div>
+                        <div class="sensor-sub-val">Chest Respiration Depth Mean</div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 3: EXPLAINABLE AI (SHAP) -->
+            <section id="xai" class="section-card mt-25">
+                <div class="card-header">
+                    <div>
+                        <h2>Explainable AI (SHAP Feature Importance & Attribution)</h2>
+                        <p class="section-desc">Game-theoretic Shapley attributions explaining model decisions</p>
+                    </div>
+                    <span class="badge badge-info">SHAP Kernel Explainer</span>
+                </div>
+                <div class="grid-2 mt-20">
+                    <!-- Global Feature Importance Chart -->
+                    <div class="chart-card">
+                        <h3>Global SHAP Feature Importance Ranking</h3>
+                        <div class="chart-wrapper-tall">
+                            <canvas id="shapImportanceChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Local Explanation Card -->
+                    <div class="xai-local-box">
+                        <h3>Sample Local Explanation (Subject S16 Window)</h3>
+                        <div class="sample-info-bar">
+                            <span>True: <strong id="xai-sample-true">--</strong></span>
+                            <span>Predicted: <strong id="xai-sample-pred">--</strong></span>
+                            <span>Confidence: <strong id="xai-sample-conf">--</strong></span>
+                        </div>
+                        <h4 class="mt-15 pos-heading">+ Positive Attributions (Increases Stress Prediction)</h4>
+                        <ul id="xai-pos-list" class="attrib-list pos-list"></ul>
+
+                        <h4 class="mt-15 neg-heading">- Negative Attributions (Decreases Stress Prediction)</h4>
+                        <ul id="xai-neg-list" class="attrib-list neg-list"></ul>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 4: FEDERATED LEARNING TOPOLOGY -->
+            <section id="federated" class="section-card mt-25">
+                <div class="card-header">
+                    <div>
+                        <h2>Federated Learning Decentralized Topology & Architecture</h2>
+                        <p class="section-desc">Privacy-preserving PyTorch & Flower (FedAvg) 5-round setup</p>
+                    </div>
+                    <span class="badge badge-success">Flower FedAvg Framework</span>
+                </div>
+
+                <!-- Architecture Topology Cards -->
+                <div class="grid-3 mt-20">
+                    <div class="fl-node-card">
+                        <div class="node-badge">Client 1 Node</div>
+                        <h4>Subjects S2, S3, S4, S5, S6</h4>
+                        <p class="sample-count">2,161 Local Training Windows</p>
+                        <p class="privacy-note">🔒 Local Training Only</p>
+                    </div>
+
+                    <div class="fl-node-card">
+                        <div class="node-badge">Client 2 Node</div>
+                        <h4>Subjects S7, S8, S9, S10, S11</h4>
+                        <p class="sample-count">2,211 Local Training Windows</p>
+                        <p class="privacy-note">🔒 Local Training Only</p>
+                    </div>
+
+                    <div class="fl-node-card">
+                        <div class="node-badge">Client 3 Node</div>
+                        <h4>Subjects S13, S14, S15</h4>
+                        <p class="sample-count">1,331 Local Training Windows</p>
+                        <p class="privacy-note">🔒 Local Training Only</p>
+                    </div>
+                </div>
+
+                <!-- Aggregation Arrow Indicator -->
+                <div class="fl-aggregation-bar mt-15">
+                    <span>⬇️ Local Parameters Transmitted (Zero Raw Data Shared) ⬇️</span>
+                    <div class="agg-badge">FedAvg Aggregation (5 Rounds) ➔ Global Model Evaluated on Unseen S16, S17</div>
+                </div>
+
+                <!-- Convergence Plot -->
+                <div class="plot-container mt-20">
+                    <h3>Federated Learning Round Metrics Convergence Plot</h3>
+                    <img src="/results/plots/federated_round_metrics.png" alt="Federated Round Metrics" class="img-plot mt-10">
+                </div>
+
+                <!-- Privacy Preserved Card -->
+                <div class="privacy-card mt-20">
+                    <div class="privacy-icon">🛡️</div>
+                    <div>
+                        <h4>Privacy Preserved Architecture</h4>
+                        <p>Raw client training data remains strictly local to each simulated client node. Only neural network model parameter updates and sample counts are communicated during FL aggregation rounds.</p>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 5: MODEL PERFORMANCE -->
+            <section id="performance" class="section-card mt-25">
+                <div class="card-header">
+                    <div>
+                        <h2>Empirical Model Performance: Centralized Baseline vs. Federated Learning</h2>
+                        <p class="section-desc">Evaluated strictly on unseen test subjects S16 and S17 (895 test samples)</p>
+                    </div>
+                    <span class="badge badge-warning">Actual Saved Results</span>
+                </div>
+
+                <!-- Metric Cards Row -->
+                <div class="grid-4 mt-20">
+                    <div class="metric-summary-card">
+                        <span class="metric-card-label">Test Accuracy</span>
+                        <span class="metric-card-val text-success" id="perf-accuracy">58.10%</span>
+                        <span class="metric-card-sub">Baseline: 47.37% (+10.73%)</span>
+                    </div>
+                    <div class="metric-summary-card">
+                        <span class="metric-card-label">Macro Precision</span>
+                        <span class="metric-card-val text-success" id="perf-precision">0.6154</span>
+                        <span class="metric-card-sub">Baseline: 0.4541 (+0.1613)</span>
+                    </div>
+                    <div class="metric-summary-card">
+                        <span class="metric-card-label">Macro Recall</span>
+                        <span class="metric-card-val text-success" id="perf-recall">0.6067</span>
+                        <span class="metric-card-sub">Baseline: 0.4008 (+0.2059)</span>
+                    </div>
+                    <div class="metric-summary-card">
+                        <span class="metric-card-label">Macro F1-Score</span>
+                        <span class="metric-card-val text-success" id="perf-f1">0.5638</span>
+                        <span class="metric-card-sub">Baseline: 0.3958 (+0.1680)</span>
+                    </div>
+                </div>
+
+                <!-- Comparison Table & Confusion Matrix -->
+                <div class="grid-2 mt-20">
+                    <div>
+                        <h3>Empirical Metric Comparison Table</h3>
+                        <table class="comp-table mt-10">
+                            <thead>
+                                <tr>
+                                    <th>Evaluation Metric</th>
+                                    <th>Centralized Baseline</th>
+                                    <th>Federated Learning (FedAvg)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Test Accuracy</strong></td>
+                                    <td>47.37%</td>
+                                    <td><strong class="text-success">58.10% (+10.73%)</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Macro Precision</strong></td>
+                                    <td>0.4541</td>
+                                    <td><strong class="text-success">0.6154 (+0.1613)</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Macro Recall</strong></td>
+                                    <td>0.4008</td>
+                                    <td><strong class="text-success">0.6067 (+0.2059)</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Macro F1-Score</strong></td>
+                                    <td>0.3958</td>
+                                    <td><strong class="text-success">0.5638 (+0.1680)</strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Weighted F1-Score</strong></td>
+                                    <td>0.5019</td>
+                                    <td><strong class="text-success">0.6105 (+0.1086)</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="plot-container">
+                        <h3>Federated Model Confusion Matrix</h3>
+                        <img src="/results/plots/federated_confusion_matrix.png" alt="Federated Confusion Matrix" class="img-plot mt-10">
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION 6: DATASET SPECIFICATIONS -->
+            <section id="dataset" class="section-card mt-25">
+                <div class="card-header">
+                    <h2>WESAD Dataset Specifications & Class Distribution</h2>
+                    <span class="badge badge-secondary">Wearable Benchmark</span>
+                </div>
+                <div class="grid-4 mt-20">
+                    <div class="spec-card">
+                        <span class="spec-num">15</span>
+                        <span class="spec-desc">Total Subjects (S2-S17)</span>
+                    </div>
+                    <div class="spec-card">
+                        <span class="spec-num">6,598</span>
+                        <span class="spec-desc">Processed 5s Windows</span>
+                    </div>
+                    <div class="spec-card">
+                        <span class="spec-num">68</span>
+                        <span class="spec-desc">Extracted Features</span>
+                    </div>
+                    <div class="spec-card">
+                        <span class="spec-num">700 Hz</span>
+                        <span class="spec-desc">Chest Signal Rate</span>
+                    </div>
+                </div>
+                <div class="grid-3 mt-20">
+                    <div class="class-count-card neutral-bg">
+                        <h3>Neutral (Class 1)</h3>
+                        <p class="count-num">3,512 Windows</p>
+                        <p class="count-pct">53.23% of Dataset</p>
+                    </div>
+                    <div class="class-count-card stress-bg">
+                        <h3>Stress (Class 2)</h3>
+                        <p class="count-num">1,981 Windows</p>
+                        <p class="count-pct">30.02% of Dataset</p>
+                    </div>
+                    <div class="class-count-card amusement-bg">
+                        <h3>Amusement (Class 3)</h3>
+                        <p class="count-num">1,105 Windows</p>
+                        <p class="count-pct">16.75% of Dataset</p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- JavaScript Bundle -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

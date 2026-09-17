@@ -1,0 +1,16 @@
+# AI-Based Real-Time Stress and Affect Detection Using Federated Learning and Explainable AI
+# Dependencies list for WESAD stress detection simulation project
+
+numpy
+pandas
+scipy
+scikit-learn
+torch
+torchvision
+flwr
+shap
+flask
+plotly
+matplotlib
+seaborn
+joblib
